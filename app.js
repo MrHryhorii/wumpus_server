@@ -70,6 +70,22 @@ app.get('/api/game/:playerId/map', checkPlayerAndTurn, (req, res) => {
 });
 
 /**
+ * GET /api/game/:playerId/ways
+ * Returns the full neighbors object.
+ */
+app.get('/api/game/:playerId/ways', checkPlayerAndTurn, (req, res) => {
+
+  const playerStatus = req.gameServer.getPlayerStatus(req.playerId);
+  const location = playerStatus.location;
+  const map = req.gameServer.getMapData();
+
+  res.json({
+    status: 'ok',
+    ways: map[location],
+  });
+});
+
+/**
  * POST /api/game/:playerId/move
  * Move the player to an adjacent cave. Requires current turn.
  * BODY: { "targetCave": 5 }
