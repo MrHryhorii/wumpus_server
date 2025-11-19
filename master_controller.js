@@ -247,4 +247,28 @@ export default class WumpusServer {
 
         return result;
     }
+
+    /**
+     * Get the player's current state and sensory perceptions
+     * @param {string} playerId
+     * @returns {{location: number, arrows: number, perceptions: string[], is_alive: boolean}}
+     */
+    getPlayerStatus(playerId) {
+        const player = this.gameState[playerId];
+        if (!player || !player.is_alive) {
+            return { 
+                location: null, 
+                arrows: 0, 
+                perceptions: [], 
+                is_alive: false 
+            };
+        }
+
+        return {
+            location: player.location,
+            arrows: player.arrows,
+            perceptions: this._getPerceptions(player.location),
+            is_alive: player.is_alive
+        };
+    }
 }

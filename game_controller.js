@@ -16,9 +16,9 @@ function askQuestion(query) {
 }
 
 /**
- * @typedef {import('./wumpus_server').WumpusServer} WumpusServer
- * @typedef {import('./wumpus_server').CaveMap} CaveMap
- * @typedef {import('./wumpus_server').TurnResult} TurnResult
+ * @typedef {import('./master_controller').WumpusServer} WumpusServer
+ * @typedef {import('./master_controller').CaveMap} CaveMap
+ * @typedef {import('./master_controller').TurnResult} TurnResult
  */
 
 class WumpusClient {
