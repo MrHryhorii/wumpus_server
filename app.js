@@ -11,6 +11,11 @@ import {
   getGameList
 } from './game_service.js';
 
+// Documentation
+import swaggerUi from 'swagger-ui-express';
+import YAML from 'yamljs';
+const swaggerDocument = YAML.load('./swagger.yaml');
+
 const PORT = process.env.PORT || 3000;
 const app = express();
 
@@ -18,6 +23,16 @@ const app = express();
 app.use(express.json());
 
 // --- API Endpoints ---
+
+/**
+ * GET /api-docs
+ * Serves the Swagger UI for API documentation.
+ */
+app.use(
+    '/api-docs', 
+    swaggerUi.serve, 
+    swaggerUi.setup(swaggerDocument)
+);
 
 /**
  * POST /api/game/create
@@ -120,22 +135,17 @@ app.post('/api/game/:playerId/move', checkPlayerAndTurn, (req, res) => {
  * Pass the turn. Requires current turn.
  */
 app.post('/api/game/:playerId/pass', checkPlayerAndTurn, (req, res) => {
-  const { targetCave } = req.body;
-  const target = parseInt(targetCave);
-
-  if (isNaN(target)) {
-    return res.status(400).json({ status: 'error', message: 'Invalid targetCave provided.' });
-  }
-
-  // Handle the turn logic
-  const result = req.gameServer.handlePlayerTurn(req.playerId, 'pass', target);
+  const result = req.gameServer.handlePlayerTurn(req.playerId, 'pass', undefined);
 
   if (result.status !== 'error') {
     advanceTurn(req.gameId);
   }
 
-  if (result.status === 'win' || result.status === 'lost') {
-    deleteGame(req.gameId); 
+  // remove game on terminal state
+  if (result?.status === 'win' || result?.status === 'lost') {
+      if (req?.gameId) {
+          deleteGame(req.gameId);
+      }
   }
 
   res.json({ ...result, currentPlayer: req.game.playerOrder[req.game.currentPlayerIndex] });
@@ -192,36 +202,33 @@ app.get('/api/game/list', (req, res) => {
 });
 
 /**
- * GET /api/game/connect
- * Event listener for a player connection.
+ * GET /api/game/:playerId/connect
+ * SSE connection listener for a player.
  */
 app.get('/api/game/:playerId/connect', (req, res) => {
-    // Set headers to keep the connection alive and tell the client we're sending event-stream data
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    
-    // Send an initial message
-    res.write(`data: Connected to server\n\n`);
-
-    // Simulate sending updates from the server
-    let counter = 0;
-    const intervalId = setInterval(() => {
-      counter++;
-      // Write the event stream format
-      res.write(`data: Message ${counter}\n\n`);
-    }, 2000);
-
-    // When client closes connection, stop sending events
-    req.on('close', () => {
+  const { playerId } = req.params;
+  if (!playerId) {
+      res.status(400).json({ status: 'error', message: 'Missing playerId.' });
+      return;
+  }
+  // SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  // initial message
+  res.write(`data: Connected to server\n\n`);
+  // periodic updates (placeholder logic)
+  const intervalId = setInterval(() => {
+      const msg = `data: Current turn check: ${new Date().toISOString()}\n\n`;
+      res.write(msg);
+  }, 2000);
+  // cleanup on disconnect
+  res.on('close', () => {
+      console.log(`Client ${playerId} disconnected. Cleaning up resources.`);
       clearInterval(intervalId);
-
-      // remove player from the game
-      const { playerId } = req.params;
-      leaveGame(playerId); 
-
+      leaveGame(playerId); // remove player and maybe close lobby
       res.end();
-    });
+  });
 });
 
 // Start the server

@@ -1,0 +1,481 @@
+openapi: 3.0.0
+info:
+  title: Hunt the Wumpus REST API
+  version: 1.0.0
+  description: |
+    # Multi-Player Wumpus Game Server API
+    This API controls the entire lifecycle of a multi-player Hunt the Wumpus game. All communication uses the standard HTTP methods.
+
+    ### Core Game Flow
+    1. **Setup:** Use `/create` and then `/join`.
+    2. **Monitoring (Real-time):** Use `/connect` (SSE) for turn updates and disconnections.
+    3. **Information:** Use `/status`, **/map**, or **/ways**.
+    4. **Action:** When it's the player's turn, use `/move`, `/shoot`, or `/pass`.
+
+    ### Game End Logic
+    When a game ends, the lobby is immediately deleted from the server. All subsequent calls to action or status endpoints will return a **404 Not Found** error, which the client should interpret as **Game Over**.
+
+servers:
+  - url: /api/game
+    description: Primary Game Endpoints
+
+paths:
+  /create:
+    post:
+      tags: [Setup]
+      summary: Creates a new game lobby and Player 1.
+      description: The very first step. Generates a unique `gameId` and the first `playerId`.
+      responses:
+        "200":
+          description: Game created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateResponse"
+
+  /{gameId}/join:
+    post:
+      tags: [Setup]
+      summary: Allows additional players to join.
+      description: Players use the shared `gameId` to enter the game, receiving a new unique `playerId`.
+      parameters:
+        - in: path
+          name: gameId
+          required: true
+          schema: { type: "string" }
+          description: The ID of the game lobby to join.
+      responses:
+        "200":
+          description: Player joined successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JoinResponse"
+        "404":
+          description: Game not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /{playerId}/status:
+    get:
+      tags: [Game State]
+      summary: Gets the current player state and sensory perceptions.
+      description: |
+        Provides the player with their current location, arrows, and crucial sensory `perceptions` (**smell Wumpus, feel draft/bats**). 
+        This is a **pure status check** and does not change the game state or advance the turn.
+        **Use Case:** The primary endpoint for clients to check whose turn it is (by checking the `currentPlayer` field).
+      parameters:
+        - in: path
+          name: playerId
+          required: true
+          schema: { type: "string" }
+          description: The ID of the player requesting status.
+      responses:
+        "200":
+          description: Current player status returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "404":
+          description: Player or Game not found (may indicate Game Over).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /{playerId}/connect:
+    get:
+      tags: [Game State]
+      summary: Establishes a Server-Sent Event (SSE) connection.
+      description: |
+        **Recommended for real-time updates.** This long-lived connection allows the server to push turn changes or game-over signals without continuous polling.
+        **CRITICAL:** The connection's `close` event is used by the server to detect when a player disconnects (e.g., closes the browser), automatically calling `/leave` to prevent "ghost players."
+      parameters:
+        - in: path
+          name: playerId
+          required: true
+          schema: { type: "string" }
+      responses:
+        "200":
+          description: Streams text/event-stream data. Content is not JSON.
+          content:
+            text/event-stream:
+              example: "data: Current turn check: 2025-11-19T09:00:00Z\n\n"
+        "404":
+          description: Player or Game not found.
+
+  /{playerId}/map:
+    get:
+      tags: [Information]
+      summary: Retrieves the full cave map layout.
+      description: |
+        Provides the complete adjacency list for the game's cave system. This is a non-action, strategic information endpoint.
+        **CaveMap format:** A dictionary where the key is the cave ID (integer) and the value is an array of neighboring cave IDs (integers).
+      parameters:
+        - in: path
+          name: playerId
+          required: true
+          schema: { type: "string" }
+      responses:
+        "200":
+          description: Full map data returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaveMapResponse"
+        "404":
+          description: Player or Game not found.
+
+  /{playerId}/ways:
+    get:
+      tags: [Information]
+      summary: Gets all valid move and shoot targets from the current location.
+      description: |
+        Returns a simplified list of adjacent caves, useful for client-side move/shoot UI validation. This is a non-action information endpoint.
+      parameters:
+        - in: path
+          name: playerId
+          required: true
+          schema: { type: "string" }
+      responses:
+        "200":
+          description: List of adjacent cave IDs returned.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: integer
+                example: [2, 5, 10]
+        "404":
+          description: Player or Game not found, or player is dead.
+
+  /{playerId}/move:
+    post:
+      tags: [Player Actions]
+      summary: Moves the player to an adjacent cave.
+      description: |
+        Requires the player to be the `currentPlayer`. Moving can result in a loss if landing on a hazard (Pit, Wumpus).
+        **Impact:** Advances the turn to the next living player.
+      parameters:
+        - in: path
+          name: playerId
+          required: true
+          schema: { type: "string" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                targetCave:
+                  {
+                    type: "integer",
+                    description: "The ID of the adjacent cave to move to.",
+                  }
+              example: { targetCave: 5 }
+      responses:
+        "200":
+          description: Move successful, check status for outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionResponse"
+        "400":
+          description: Invalid move (not adjacent, not turn, etc.).
+        "404":
+          description: Player or Game not found (may indicate Game Over).
+
+  /{playerId}/shoot:
+    post:
+      tags: [Player Actions]
+      summary: Fires an arrow into an adjacent cave.
+      description: |
+        Requires the player to be the `currentPlayer`. Shooting can result in a win (killing Wumpus) or a loss (Wumpus moves/eats player).
+        **Impact:** Advances the turn to the next living player.
+      parameters:
+        - in: path
+          name: playerId
+          required: true
+          schema: { type: "string" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                targetCave:
+                  {
+                    type: "integer",
+                    description: "The ID of the adjacent cave to shoot into.",
+                  }
+              example: { targetCave: 8 }
+      responses:
+        "200":
+          description: Shot fired, check status for outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionResponse"
+        "400":
+          description: Invalid shot (not adjacent, not turn, etc.).
+        "404":
+          description: Player or Game not found (may indicate Game Over).
+
+  /{playerId}/pass:
+    post:
+      tags: [Player Actions]
+      summary: Forfeits the current player's turn to the next player.
+      description: |
+        Requires the player to be the `currentPlayer`. This action is **safe** and guarantees the player survives the turn.
+        **Impact:** Advances the turn to the next living player without changing the game state (besides the current player).
+      parameters:
+        - in: path
+          name: playerId
+          required: true
+          schema: { type: "string" }
+      responses:
+        "200":
+          description: Turn successfully passed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionResponse"
+        "400":
+          description: Not the current player's turn.
+        "404":
+          description: Player or Game not found.
+
+  /{playerId}/leave:
+    post:
+      tags: [Game State]
+      summary: Explicitly removes a player from the game.
+      description: |
+        Used when a player quits gracefully. If the player was the last one, the game lobby is closed.
+        **Impact:** Removes player from turn order and game state.
+      parameters:
+        - in: path
+          name: playerId
+          required: true
+          schema: { type: "string" }
+      responses:
+        "200":
+          description: Player successfully left the game.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeaveResponse"
+        "404":
+          description: Player not in any active game.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /list:
+    get:
+      tags: [Setup]
+      summary: Retrieves a public list of all active game lobbies.
+      description: Useful for implementing a "Game Browser" feature on the frontend.
+      responses:
+        "200":
+          description: List of active lobbies.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GameLobby"
+
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          {
+            type: "string",
+            enum: ["error"],
+            description: 'Must be "error" for actual errors.',
+          }
+        message:
+          {
+            type: "string",
+            description: "A human-readable explanation of the error.",
+          }
+
+    LeaveResponse:
+      type: object
+      properties:
+        status:
+          {
+            type: "string",
+            enum: ["ok"],
+            description: 'Always "ok" for a successful leave.',
+          }
+        message:
+          {
+            type: "string",
+            description: 'Confirmation message (e.g., "You left the game. Lobby closed...").',
+          }
+
+    PlayerStatusBase:
+      type: object
+      description: Base information about the player's current state in the cave.
+      properties:
+        location:
+          {
+            type: "integer",
+            nullable: true,
+            description: "Current cave ID (or null if the player is dead).",
+          }
+        arrows: { type: "integer", description: "Number of arrows remaining." }
+        is_alive:
+          { type: "boolean", description: "Whether the player is alive." }
+        perceptions:
+          type: array
+          items:
+            {
+              type: "string",
+              enum: ["smell Wumpus", "feel draft", "hear bats", "see nothing"],
+            }
+          description: 'Sensory input for the current cave (e.g., "smell Wumpus"). Empty if dead.'
+
+    TurnResultBase:
+      type: object
+      description: Base result for turn actions (move/shoot/pass).
+      properties:
+        status:
+          {
+            type: "string",
+            enum: ["ok", "error", "win", "lost"],
+            description: "The outcome of the action.",
+          }
+        message:
+          {
+            type: "string",
+            description: 'A detailed message about the result (e.g., "VICTORY! You killed the Wumpus!").',
+          }
+        perceptions:
+          type: array
+          items: { type: "string" }
+          description: "List of perceptions after the action, based on the player's new location (if alive)."
+
+    CaveMapResponse:
+      type: object
+      description: The full adjacency map of the cave system.
+      additionalProperties:
+        type: array
+        items:
+          type: integer
+      example:
+        "1": [2, 5, 10]
+        "2": [1, 3, 11]
+        # ... and so on for all caves
+
+    # 1. Endpoints: /create
+    CreateResponse:
+      allOf:
+        - $ref: "#/components/schemas/TurnResultBase"
+        - type: object
+          properties:
+            gameId:
+              { type: "string", description: "Unique ID for the game lobby." }
+            playerId:
+              {
+                type: "string",
+                description: "The unique ID assigned to Player 1.",
+              }
+            startLocation:
+              {
+                type: "integer",
+                description: "The starting cave ID for this player.",
+              }
+            numCaves:
+              {
+                type: "integer",
+                description: "Total number of caves in the map.",
+              }
+            currentPlayer:
+              {
+                type: "string",
+                description: "The ID of the player whose turn it is (initially Player 1).",
+              }
+
+    # 2. Endpoints: /join
+    JoinResponse:
+      allOf:
+        - $ref: "#/components/schemas/TurnResultBase"
+        - type: object
+          properties:
+            playerId:
+              {
+                type: "string",
+                description: "The unique ID assigned to the joining player.",
+              }
+            startLocation:
+              {
+                type: "integer",
+                description: "The starting cave ID for this player.",
+              }
+            numCaves:
+              {
+                type: "integer",
+                description: "Total number of caves in the map.",
+              }
+            currentPlayer:
+              {
+                type: "string",
+                description: "The ID of the player whose turn it is.",
+              }
+
+    # 3. Endpoints: /status
+    StatusResponse:
+      allOf:
+        - $ref: "#/components/schemas/PlayerStatusBase"
+        - type: object
+          properties:
+            currentPlayer:
+              {
+                type: "string",
+                nullable: true,
+                description: "The ID of the player whose turn it is. This is the main check for the client.",
+              }
+
+    # 4. Endpoints: /move, /shoot, /pass
+    ActionResponse:
+      allOf:
+        - $ref: "#/components/schemas/TurnResultBase"
+        - type: object
+          properties:
+            currentPlayer:
+              {
+                type: "string",
+                nullable: true,
+                description: "The ID of the player whose turn it is *next*. Null if the game has ended.",
+              }
+
+    # 5. Endpoints: /list
+    GameLobby:
+      type: object
+      description: Public information about an active game.
+      properties:
+        gameId: { type: "string" }
+        numPlayers:
+          {
+            type: "integer",
+            description: "Number of active players in the lobby.",
+          }
+        maxCaves:
+          { type: "integer", description: "Total number of caves in the map." }
+        currentPlayer:
+          {
+            type: "string",
+            nullable: true,
+            description: "ID of the player whose turn it is currently.",
+          }

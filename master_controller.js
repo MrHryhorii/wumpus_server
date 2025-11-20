@@ -234,6 +234,7 @@ export default class WumpusServer {
                 }
             }
         } else if (action === "pass") {
+            result.status = "ok";
             result.message = "You passed your turn.";
         } else {
             return { status: "error", message: "Unknown action.", perceptions: this._getPerceptions(current) };

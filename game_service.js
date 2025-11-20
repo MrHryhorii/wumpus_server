@@ -101,7 +101,7 @@ export function checkPlayerAndTurn(req, res, next) {
  */
 export function createGame(req, res) {
     const gameId = uuidv4();
-    const server = new WumpusServer(10, 15);
+    const server = new WumpusServer(15, 25);
     const playerId = uuidv4();
 
     const startLocation = server.initializePlayer(playerId);
