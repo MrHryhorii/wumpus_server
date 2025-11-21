@@ -8,7 +8,8 @@ import {
   joinGame,
   deleteGame,
   leaveGame,
-  getGameList
+  getGameList,
+  getTurnStatus
 } from './game_service.js';
 
 // Documentation
@@ -53,6 +54,20 @@ app.post('/api/game/:gameId/join', (req, res) => {
     return res.status(404).json(result);
   }
   res.json(result);
+});
+
+/**
+ * GET /api/game/:gameId/turn
+ * Simple check for whose turn it is currently.
+ */
+app.get('/api/game/:gameId/turn', (req, res) => {
+    const { gameId } = req.params;
+    const result = getTurnStatus(gameId);
+
+    if (result.status === 'error') {
+        return res.status(404).json(result);
+    }
+    res.json(result);
 });
 
 /**

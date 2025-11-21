@@ -261,3 +261,30 @@ export function getGameList() {
     };
 }
 
+/**
+ * Returns the current turn state of a specific game.
+ * @param {string} gameId
+ * @returns {{status: string, currentPlayer: string|null, message: string}}
+ */
+export function getTurnStatus(gameId) {
+    const game = activeGames[gameId];
+
+    if (!game) {
+        return {
+            status: 'error',
+            message: 'Game not found.',
+            currentPlayer: null
+        };
+    }
+    
+    // safe current player (null when index invalid or no players)
+    const players = Array.isArray(game.playerOrder) ? game.playerOrder : [];
+    const idx = typeof game.currentPlayerIndex === 'number' ? game.currentPlayerIndex : -1;
+    const currentPlayer = (idx >= 0 && idx < players.length) ? players[idx] : null;
+
+    return {
+        status: 'ok',
+        message: 'Current turn status retrieved successfully.',
+        currentPlayer: currentPlayer
+    };
+}

@@ -58,6 +58,33 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /{gameId}/turn:
+    get:
+      tags: [Game State]
+      summary: Retrieves the ID of the current player whose turn it is.
+      description: |
+        A simple, lightweight check to determine who should be performing an action (move, shoot, pass).
+        This endpoint is checked by the `gameId`, not `playerId`.
+      parameters:
+        - in: path
+          name: gameId
+          required: true
+          schema: { type: "string" }
+          description: The ID of the game lobby to check.
+      responses:
+        "200":
+          description: Current turn ID returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TurnStatusResponse"
+        "404":
+          description: Game not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /{playerId}/status:
     get:
       tags: [Game State]
@@ -433,6 +460,18 @@ components:
                 type: "string",
                 description: "The ID of the player whose turn it is.",
               }
+    # 2.1 Endpoints: /turn
+    TurnStatusResponse:
+      type: object
+      properties:
+        status: { type: "string", enum: ["ok", "error"] }
+        message: { type: "string" }
+        currentPlayer:
+          {
+            type: "string",
+            nullable: true,
+            description: "The ID of the player whose turn it is. Null if the game has ended or is empty.",
+          }
 
     # 3. Endpoints: /status
     StatusResponse:
