@@ -4,6 +4,7 @@
  * @property {number} location - Current cave ID of the player.
  * @property {number} arrows - Number of arrows remaining.
  * @property {boolean} is_alive - Whether the player is alive.
+ * @property {number[]} visitedLocations - Locations is visited by player
  * @typedef {Object.<string, PlayerState>} GameState - Stores state for each player by ID.
  * @typedef {Object} TurnResult
  * @property {string} status - 'ok', 'error', 'win', or 'lost'.
@@ -108,7 +109,7 @@ export default class WumpusServer {
         const startCave = safeCaves.length > 0 ? safeCaves[Math.floor(Math.random() * safeCaves.length)] : 0;
 
         /** @type {PlayerState} */
-        this.gameState[playerId] = { location: startCave, arrows: 5, is_alive: true };
+        this.gameState[playerId] = { location: startCave, arrows: 5, is_alive: true, visitedLocations: [startCave] };
         return startCave;
     }
 
@@ -198,6 +199,7 @@ export default class WumpusServer {
                 return { status: "error", message: "Invalid move. Choose an adjacent cave.", perceptions: this._getPerceptions(current) };
             }
             player.location = targetCave;
+            player.visitedLocations.push(targetCave);
             result.message = `You moved to cave ${targetCave}.`;
             this._checkForHazards(playerId, targetCave, result);
         } else if (action === "shoot") {
@@ -261,7 +263,8 @@ export default class WumpusServer {
                 location: null, 
                 arrows: 0, 
                 perceptions: [], 
-                is_alive: false 
+                is_alive: false,
+                visitedLocations: []
             };
         }
 
@@ -269,7 +272,26 @@ export default class WumpusServer {
             location: player.location,
             arrows: player.arrows,
             perceptions: this._getPerceptions(player.location),
-            is_alive: player.is_alive
+            is_alive: player.is_alive,
+            visitedLocations: player.visitedLocations
+        };
+    }
+
+    /** Get the games's locations of hazards
+     * @returns {numCaves: number, {wumpus: number|null, pits: number[], bats: number[]}}
+     */
+    getHazardLocation(){
+        if (this.numCaves === 0) {
+            return { error: "Number of generated caves = 0" };
+        }
+
+        return {
+            numCaves: this.numCaves,
+            hazards: {
+                wumpus: this.wumpusLocation,
+                pits: Array.from(this.pits),
+                bats: Array.from(this.bats)
+            }
         };
     }
 }

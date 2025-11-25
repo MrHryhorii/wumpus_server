@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import cors from 'cors';
 // Import game logic controller for reference/type, though most logic is in game_service.js
 import {
   advanceTurn,
@@ -9,7 +10,8 @@ import {
   deleteGame,
   leaveGame,
   getGameList,
-  getTurnStatus
+  getTurnStatus,
+  getHazardLocation
 } from './game_service.js';
 
 // Documentation
@@ -22,6 +24,7 @@ const app = express();
 
 // Middleware to parse JSON bodies
 app.use(express.json());
+app.use(cors());
 
 // --- API Endpoints ---
 
@@ -84,6 +87,7 @@ app.get('/api/game/:playerId/status', checkPlayerAndTurn, (req, res) => {
     arrows: playerStatus.arrows,
     perceptions: playerStatus.perceptions,
     isAlive: playerStatus.is_alive,
+    visitedLocations: playerStatus.visitedLocations,
     currentPlayer: req.game.playerOrder[req.game.currentPlayerIndex],
   });
 });
@@ -126,6 +130,10 @@ app.post('/api/game/:playerId/move', checkPlayerAndTurn, (req, res) => {
 
   if (isNaN(target)) {
     return res.status(400).json({ status: 'error', message: 'Invalid targetCave provided.' });
+  }
+
+  if (req.game.status === 'open') {
+      req.game.status = 'playing';
   }
 
   // Handle the turn logic
@@ -177,6 +185,10 @@ app.post('/api/game/:playerId/shoot', checkPlayerAndTurn, (req, res) => {
 
   if (isNaN(target)) {
     return res.status(400).json({ status: 'error', message: 'Invalid targetCave provided.' });
+  }
+
+  if (req.game.status === 'open') {
+      req.game.status = 'playing';
   }
 
   // Handle the turn logic
@@ -244,6 +256,21 @@ app.get('/api/game/:playerId/connect', (req, res) => {
       leaveGame(playerId); // remove player and maybe close lobby
       res.end();
   });
+});
+
+/**
+ * GET /api/game/:gameId/hazards
+ * Get data about locations of hazards
+ */
+app.get('/api/game/:gameId/hazards', (req, res) => {
+    const { gameId } = req.params;
+    const result = getHazardLocation(gameId);
+
+    if (result.status === 'error') {
+        return res.status(404).json({ status: 'error', message: result.message });
+    }
+
+    res.json(result);
 });
 
 // Start the server

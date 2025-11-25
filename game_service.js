@@ -109,7 +109,8 @@ export function createGame(req, res) {
     activeGames[gameId] = {
         server,
         playerOrder: [playerId],
-        currentPlayerIndex: 0
+        currentPlayerIndex: 0,
+        status: 'open'
     };
 
     playerToGame[playerId] = gameId;
@@ -139,6 +140,13 @@ export function joinGame(req, res) {
         };
     }
 
+    if (game.status !== 'open') {
+        return { 
+            status: 'error', 
+            message: 'Cannot join. The game has already started.' 
+        };
+    }
+
     const playerId = uuidv4();
     const startLocation = game.server.initializePlayer(playerId);
 
@@ -152,6 +160,18 @@ export function joinGame(req, res) {
         startLocation,
         numPlayers: game.playerOrder.length
     };
+}
+
+/**
+ * Helper to switch game state to 'playing'
+ * @param {string} gameId 
+ */
+export function lockGame(gameId) {
+    const game = activeGames[gameId];
+    if (game && game.status === 'open') {
+        game.status = 'playing';
+        console.log(`Game ${gameId} is now locked (playing).`);
+    }
 }
 
 /**
@@ -249,7 +269,7 @@ export function getGameList() {
             gameId,
             numPlayers,
             maxCaves,
-            status: 'In Progress',
+            status: game.status,
             currentPlayer
         });
     }
@@ -286,5 +306,33 @@ export function getTurnStatus(gameId) {
         status: 'ok',
         message: 'Current turn status retrieved successfully.',
         currentPlayer: currentPlayer
+    };
+}
+
+/**
+ * Returns the current turn state of a specific game.
+ * @param {string} gameId
+ * @returns {{status: string, message: string, hazards: Object|null}}
+ */
+export function getHazardLocation(gameId){
+    const game = activeGames[gameId];
+    if (!game) {
+        return {
+            status: 'error',
+            message: 'Game not found.',
+            hazards: null
+        };
+    }
+    
+    const hazards = game.server.getHazardLocation();
+    
+    if (hazards.error) {
+        return { status: 'error', message: hazards.error, hazards: null };
+    }
+
+    return {
+        status: 'ok',
+        message: 'Hazard locations retrieved successfully.',
+        hazards: hazards.hazards
     };
 }
