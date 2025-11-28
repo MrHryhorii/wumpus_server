@@ -85,6 +85,74 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /{gameId}/hazards:
+    get:
+      summary: Get Hazard Locations (Wumpus, Pits, Bats)
+      operationId: getHazardLocation
+      tags:
+        - Game
+      parameters:
+        - in: path
+          name: gameId
+          schema:
+            type: string
+            format: uuid
+          required: true
+          description: The ID of the game.
+      responses:
+        "200":
+          description: Successful response containing hazard locations.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+                    example: ok
+                  message:
+                    type: string
+                    example: Hazard locations retrieved successfully.
+                  hazards:
+                    type: object
+                    properties:
+                      wumpus:
+                        type: "integer"
+                        nullable: true
+                        description: Cave ID where the Wumpus is located, or null if dead/not placed.
+                      pits:
+                        type: array
+                        items:
+                          type: integer
+                        description: Array of Cave IDs with bottomless pits.
+                      bats:
+                        type: array
+                        items:
+                          type: integer
+                        description: Array of Cave IDs with super bats.
+                required:
+                  - status
+                  - message
+                  - hazards
+        "404":
+          description: Game not found.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [error]
+                    example: error
+                  message:
+                    type: string
+                    example: Game not found.
+                  hazards:
+                    type: "null"
+                    example: null
+
   /{playerId}/status:
     get:
       tags: [Game State]
@@ -372,6 +440,11 @@ components:
               enum: ["smell Wumpus", "feel draft", "hear bats", "see nothing"],
             }
           description: 'Sensory input for the current cave (e.g., "smell Wumpus"). Empty if dead.'
+        visitedLocations:
+          type: array
+          items:
+            type: integer
+          description: "Chronological history of all cave IDs visited by the player, starting with the initial spawn."
 
     TurnResultBase:
       type: object
@@ -505,6 +578,10 @@ components:
       description: Public information about an active game.
       properties:
         gameId: { type: "string" }
+        status:
+          type: string
+          enum: ["open", "playing"]
+          description: "If 'open', players can join. If 'playing', the game has started."
         numPlayers:
           {
             type: "integer",
